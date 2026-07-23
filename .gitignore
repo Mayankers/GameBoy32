@@ -1,0 +1,34 @@
+# Compiled binaries
+gb
+*.o
+*.out
+*.exe
+
+# Precompiled headers
+*.gch
+*.pch
+
+# Windows zone identifier metadata (from WSL/Windows-mounted drives)
+*:Zone.Identifier
+
+# Editor/IDE
+.vscode/
+.idea/
+*.swp
+*~
+
+# Build directories
+build/
+bin/
+obj/
+
+# Core dumps
+core
+*.core
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# ROMS
+*.gb
