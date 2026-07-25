@@ -63,6 +63,43 @@ static inline void set_de(GB *gb, uint16_t val) { gb->d = val >> 8; gb->e = val 
  * (used by both the CB table and the main opcode table)
  * ================================================================ */
 
+static void bit(GB *gb, uint8_t bit_num, uint8_t reg) {
+  SET_FLAG(gb, FLAG_Z);
+  SET_FLAG(gb, FLAG_H);
+  CLEAR_FLAG(gb, FLAG_N);
+  if (reg & (1 << bit_num)) {
+    CLEAR_FLAG(gb, FLAG_Z);
+  }
+}
+
+static uint8_t res(GB *gb, uint8_t bit_num, uint8_t reg) {
+  return reg & ~(1 << bit_num);
+}
+
+static uint8_t set(GB *gb, uint8_t bit_num, uint8_t reg) {
+  return reg | (1 << bit_num);
+}
+
+static uint8_t sla(GB *gb, uint8_t reg) {
+  uint8_t bit7 = (reg >> 7) & 0x1;
+  gb->f = 0;
+  if (bit7) SET_FLAG(gb, FLAG_C);
+  reg <<= 1;
+  if (reg == 0) SET_FLAG(gb, FLAG_Z);
+  return reg;
+}
+
+static uint8_t sra(GB *gb, uint8_t reg) {
+  uint8_t bit0 = reg & 0x1;
+  uint8_t mask = reg & 0x80;
+  gb->f = 0;
+  if (bit0) SET_FLAG(gb, FLAG_C);
+  reg >>= 1;
+  reg |= mask;
+  if (reg == 0) SET_FLAG(gb, FLAG_Z);
+  return reg;
+}
+
 static uint8_t srl(GB *gb, uint8_t reg)
 {
   gb->f = 0;
@@ -252,8 +289,47 @@ int prefix_cb(GB *gb, uint8_t op)
 {
   switch (op)
   {
-  case 0x38: gb->b = srl(gb, gb->b); return 8; // SRL B
-  case 0x3F: gb->a = srl(gb, gb->a); return 8; // SRL A
+  case 0x00: gb->b = rlc(gb, gb->b); return 8; // RLC B
+  case 0x01: gb->c = rlc(gb, gb->c); return 8; // RLC C
+  case 0x02: gb->d = rlc(gb, gb->d); return 8; // RLC D
+  case 0x03: gb->e = rlc(gb, gb->e); return 8; // RLC E
+  case 0x04: gb->h = rlc(gb, gb->h); return 8; // RLC H
+  case 0x05: gb->l = rlc(gb, gb->l); return 8; // RLC L
+  case 0x06:
+  {
+    uint16_t hl = get_hl(gb);
+    wb(gb, hl, rlc(gb, rb(gb, hl)));
+    return 16;
+  } // RLC (HL)
+  case 0x07: gb->a = rlc(gb, gb->a); return 8; // RLC A
+
+  case 0x08: gb->b = rrc(gb, gb->b); return 8; // RRC B
+  case 0x09: gb->c = rrc(gb, gb->c); return 8; // RRC C
+  case 0x0A: gb->d = rrc(gb, gb->d); return 8; // RRC D
+  case 0x0B: gb->e = rrc(gb, gb->e); return 8; // RRC E
+  case 0x0C: gb->h = rrc(gb, gb->h); return 8; // RRC H
+  case 0x0D: gb->l = rrc(gb, gb->l); return 8; // RRC L
+  case 0x0E:
+  {
+    uint16_t hl = get_hl(gb);
+    wb(gb, hl, rrc(gb, rb(gb, hl)));
+    return 16;
+  } // RRC (HL)
+  case 0x0F: gb->a = rrc(gb, gb->a); return 8; // RRC A
+
+  case 0x10: gb->b = rl(gb, gb->b); return 8; // RL B
+  case 0x11: gb->c = rl(gb, gb->c); return 8; // RL C
+  case 0x12: gb->d = rl(gb, gb->d); return 8; // RL D
+  case 0x13: gb->e = rl(gb, gb->e); return 8; // RL E
+  case 0x14: gb->h = rl(gb, gb->h); return 8; // RL H
+  case 0x15: gb->l = rl(gb, gb->l); return 8; // RL L
+  case 0x16:
+  {
+    uint16_t hl = get_hl(gb);
+    wb(gb, hl, rl(gb, rb(gb, hl)));
+    return 16;
+  } // RL (HL)
+  case 0x17: gb->a = rl(gb, gb->a); return 8; // RL A
 
   case 0x18: gb->b = rr(gb, gb->b); return 8; // RR B
   case 0x19: gb->c = rr(gb, gb->c); return 8; // RR C
@@ -261,10 +337,69 @@ int prefix_cb(GB *gb, uint8_t op)
   case 0x1B: gb->e = rr(gb, gb->e); return 8; // RR E
   case 0x1C: gb->h = rr(gb, gb->h); return 8; // RR H
   case 0x1D: gb->l = rr(gb, gb->l); return 8; // RR L
-  // Implement RR (HL)#############################################################################
+  case 0x1E:
+  {
+    uint16_t hl = get_hl(gb);
+    wb(gb, hl, rr(gb, rb(gb, hl)));
+    return 16;
+  } // RR (HL)
   case 0x1F: gb->a = rr(gb, gb->a); return 8; // RR A
 
+  case 0x20: gb->b = sla(gb, gb->b); return 8; // SLA B
+  case 0x21: gb->c = sla(gb, gb->c); return 8; // SLA C
+  case 0x22: gb->d = sla(gb, gb->d); return 8; // SLA D
+  case 0x23: gb->e = sla(gb, gb->e); return 8; // SLA E
+  case 0x24: gb->h = sla(gb, gb->h); return 8; // SLA H
+  case 0x25: gb->l = sla(gb, gb->l); return 8; // SLA L
+  case 0x26:
+  {
+    uint16_t hl = get_hl(gb);
+    wb(gb, hl, sla(gb, rb(gb, hl)));
+    return 16;
+  } // SLA (HL)
+  case 0x27: gb->a = sla(gb, gb->a); return 8; // SLA A
+
+  case 0x28: gb->b = sra(gb, gb->b); return 8; // SRA B
+  case 0x29: gb->c = sra(gb, gb->c); return 8; // SRA C
+  case 0x2A: gb->d = sra(gb, gb->d); return 8; // SRA D
+  case 0x2B: gb->e = sra(gb, gb->e); return 8; // SRA E
+  case 0x2C: gb->h = sra(gb, gb->h); return 8; // SRA H
+  case 0x2D: gb->l = sra(gb, gb->l); return 8; // SRA L
+  case 0x2E:
+  {
+    uint16_t hl = get_hl(gb);
+    wb(gb, hl, sra(gb, rb(gb, hl)));
+    return 16;
+  } // SRA (HL)
+  case 0x2F: gb->a = sra(gb, gb->a); return 8; // SRA A
+
+  case 0x30: gb->b = swap(gb, gb->b); return 8; // SWAP B
+  case 0x31: gb->c = swap(gb, gb->c); return 8; // SWAP C
+  case 0x32: gb->d = swap(gb, gb->d); return 8; // SWAP D
+  case 0x33: gb->e = swap(gb, gb->e); return 8; // SWAP E
+  case 0x34: gb->h = swap(gb, gb->h); return 8; // SWAP H
+  case 0x35: gb->l = swap(gb, gb->l); return 8; // SWAP L
+  case 0x36:
+  {
+    uint16_t hl = get_hl(gb);
+    wb(gb, hl, swap(gb, rb(gb, hl)));
+    return 16;
+  }  // SWAP (HL)
   case 0x37: gb->a = swap(gb, gb->a); return 8; // SWAP A
+
+  case 0x38: gb->b = srl(gb, gb->b); return 8; // SRL B
+  case 0x39: gb->c = srl(gb, gb->c); return 8; // SRL C
+  case 0x3A: gb->d = srl(gb, gb->d); return 8; // SRL D
+  case 0x3B: gb->e = srl(gb, gb->e); return 8; // SRL E
+  case 0x3C: gb->h = srl(gb, gb->h); return 8; // SRL H
+  case 0x3D: gb->l = srl(gb, gb->l); return 8; // SRL L
+  case 0x3E:
+  {
+    uint16_t hl = get_hl(gb);
+    wb(gb, hl, srl(gb, rb(gb, hl)));
+    return 16;
+  } // SRL (HL)
+  case 0x3F: gb->a = srl(gb, gb->a); return 8; // SRL A
 
   default:
     printf("Unknown CB opcode 0x%02X\n", op);
