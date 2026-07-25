@@ -44,6 +44,20 @@ static uint16_t pop(GB *gb)
   return (hi << 8) | lo;
 }
 
+
+/* ================================================================
+ * CONCATENATED REGISTER HELPERS
+ * ================================================================ */
+
+static inline uint16_t get_hl(GB *gb) { return ((uint16_t)gb->h << 8) | gb->l; }
+static inline void set_hl(GB *gb, uint16_t val) { gb->h = val >> 8; gb->l = val & 0xFF; }
+
+static inline uint16_t get_bc(GB *gb) { return ((uint16_t)gb->b << 8) | gb->c; }
+static inline void set_bc(GB *gb, uint16_t val) { gb->b = val >> 8; gb->c = val & 0xFF; }
+
+static inline uint16_t get_de(GB *gb) { return ((uint16_t)gb->d << 8) | gb->e; }
+static inline void set_de(GB *gb, uint16_t val) { gb->d = val >> 8; gb->e = val & 0xFF; }
+
 /* ================================================================
  * SHARED ALU / SHIFT-ROTATE HELPERS
  * (used by both the CB table and the main opcode table)
@@ -55,6 +69,19 @@ static uint8_t srl(GB *gb, uint8_t reg)
   if (reg & 1)
     SET_FLAG(gb, FLAG_C);
   reg >>= 1;
+  if (reg == 0)
+    SET_FLAG(gb, FLAG_Z);
+  return reg;
+}
+
+static uint8_t rl(GB *gb, uint8_t reg)
+{
+  uint8_t old_carry = (GET_FLAG(gb, FLAG_C)) ? 1 : 0;
+  uint8_t bit7 = (reg >> 7) & 1;
+  gb->f = 0;
+  if (bit7)
+    SET_FLAG(gb, FLAG_C);
+  reg = (reg << 1) | old_carry;
   if (reg == 0)
     SET_FLAG(gb, FLAG_Z);
   return reg;
@@ -128,6 +155,45 @@ static void xor(GB *gb, uint8_t reg)
   return;
 }
 
+static void op_or(GB *gb, uint8_t reg) {
+  gb->a |= reg;
+  gb->f = 0;
+  if (gb->a == 0)
+    SET_FLAG(gb, FLAG_Z);
+}
+
+static void op_and (GB *gb, uint8_t reg) {
+  gb->a &= reg;
+  gb->f = FLAG_H;
+  if (!gb->a)
+    SET_FLAG(gb, FLAG_Z);
+}
+
+static void add (GB *gb, uint8_t reg) {
+  uint16_t result = gb->a + reg;
+  gb->f = 0;
+  if (result > 0xFF)
+    SET_FLAG(gb, FLAG_C);
+  if ((gb->a & 0xF) + (reg & 0xF) > 0xF)
+    SET_FLAG(gb, FLAG_H);
+  if ((result & 0xFF) == 0)
+    SET_FLAG(gb, FLAG_Z);
+  gb->a = result & 0xFF;
+}
+
+static void sub(GB *gb, uint8_t reg) {
+  uint16_t result = gb->a - reg;
+  gb->f = 0;
+  SET_FLAG(gb, FLAG_N);
+  if (reg > gb->a)
+    SET_FLAG(gb, FLAG_C);
+  if ((gb->a & 0xF) < (reg & 0xF))
+    SET_FLAG(gb, FLAG_H);
+  if (result == 0)
+    SET_FLAG(gb, FLAG_Z);
+  gb->a = result;
+}
+
 static void adc(GB *gb, uint8_t val) {
     uint8_t carry = (GET_FLAG(gb, FLAG_C)) ? 1 : 0;
     uint16_t result = gb->a + val + carry;
@@ -154,6 +220,12 @@ static void sbc(GB *gb, uint8_t val) {
     gb->a = result & 0xFF;
 }
 
+
+static void rst (GB *gb, uint16_t val) {
+  push(gb, gb->pc);
+  gb->pc = val;
+}
+
 /* ================================================================
  * CB-PREFIXED OPCODE TABLE
  * ================================================================ */
@@ -162,29 +234,19 @@ int prefix_cb(GB *gb, uint8_t op)
 {
   switch (op)
   {
-  case 0x38:
-    gb->b = srl(gb, gb->b);
-    return 8; // SRL B
-  case 0x3F:
-    gb->a = srl(gb, gb->a);
-    return 8; // SRL A
+  case 0x38: gb->b = srl(gb, gb->b); return 8; // SRL B
+  case 0x3F: gb->a = srl(gb, gb->a); return 8; // SRL A
 
-  case 0x19:
-    gb->c = rr(gb, gb->c);
-    return 8; // RR C
-  case 0x1A:
-    gb->d = rr(gb, gb->d);
-    return 8; // RR D
-  case 0x1B:
-    gb->e = rr(gb, gb->e);
-    return 8; // RR E
-  case 0x1F:
-    gb->a = rr(gb, gb->a);
-    return 8; // RR A
+  case 0x18: gb->b = rr(gb, gb->b); return 8; // RR B
+  case 0x19: gb->c = rr(gb, gb->c); return 8; // RR C
+  case 0x1A: gb->d = rr(gb, gb->d); return 8; // RR D
+  case 0x1B: gb->e = rr(gb, gb->e); return 8; // RR E
+  case 0x1C: gb->h = rr(gb, gb->h); return 8; // RR H
+  case 0x1D: gb->l = rr(gb, gb->l); return 8; // RR L
+  // Implement RR (HL)#############################################################################
+  case 0x1F: gb->a = rr(gb, gb->a); return 8; // RR A
 
-  case 0x37:
-    gb->a = swap(gb, gb->a);
-    return 8; // SWAP A
+  case 0x37: gb->a = swap(gb, gb->a); return 8; // SWAP A
 
   default:
     printf("Unknown CB opcode 0x%02X\n", op);
@@ -213,7 +275,7 @@ int cpu_step(GB *gb)
       gb->ime = 0;
       for (int i = 0; i < 5; i++) {
         if (pending & (1 << i)) {
-	  gb->mem[0xFF0f] &= ~(1 << i);
+	  gb->mem[0xFF0F] &= ~(1 << i);
 	  push(gb, gb->pc);
 	  gb->pc = 0x40 + (i * 8);
 	  return 20;
@@ -311,13 +373,17 @@ int cpu_step(GB *gb)
     return 4;
   }
 
+  // RLA
+  case 0x17:
+    gb->a = rl(gb, gb->a);
+    CLEAR_FLAG(gb, FLAG_Z);
+    return 4;
+
   // RRA
   case 0x1F:
-  {
     gb->a = rr(gb, gb->a);
     CLEAR_FLAG(gb, FLAG_Z);
     return 4;
-  }
 
   // PREFIX CB
   case 0xCB:
@@ -412,7 +478,7 @@ int cpu_step(GB *gb)
   // LD B,(HL)
   case 0x46:
   {
-    uint16_t hl = ((uint16_t)gb->h << 8) | gb->l;
+    uint16_t hl = get_hl(gb);
     gb->b = rb(gb, hl);
     return 8;
   }
@@ -420,7 +486,7 @@ int cpu_step(GB *gb)
   // LD C,(HL)
   case 0x4E:
   {
-    uint16_t hl = ((uint16_t)gb->h << 8) | gb->l;
+    uint16_t hl = get_hl(gb);
     gb->c = rb(gb, hl);
     return 8;
   }
@@ -428,7 +494,7 @@ int cpu_step(GB *gb)
   // LD D,(HL)
   case 0x56:
   {
-    uint16_t hl = ((uint16_t)gb->h << 8) | gb->l;
+    uint16_t hl = get_hl(gb);
     gb->d = rb(gb, hl);
     return 8;
   }
@@ -436,7 +502,7 @@ int cpu_step(GB *gb)
   // LD E,(HL)
   case 0x5E:
   {
-    uint16_t hl = ((uint16_t)gb->h << 8) | gb->l;
+    uint16_t hl = get_hl(gb);
     gb->e = rb(gb, hl);
     return 8;
   }
@@ -444,7 +510,7 @@ int cpu_step(GB *gb)
   // LD H,(HL)
   case 0x66:
   {
-    uint16_t hl = ((uint16_t)gb->h << 8) | gb->l;
+    uint16_t hl = get_hl(gb);
     gb->h = rb(gb, hl);
     return 8;
   }
@@ -452,7 +518,7 @@ int cpu_step(GB *gb)
   // LD L,(HL)
   case 0x6E:
   {
-    uint16_t hl = ((uint16_t)gb->h << 8) | gb->l;
+    uint16_t hl = get_hl(gb);
     gb->l = rb(gb, hl);
     return 8;
   }
@@ -460,7 +526,7 @@ int cpu_step(GB *gb)
   // LD A,(HL)
   case 0x7E:
   {
-    uint16_t hl = ((uint16_t)gb->h << 8) | gb->l;
+    uint16_t hl = get_hl(gb);
     gb->a = rb(gb, hl);
     return 8;
   }
@@ -471,42 +537,42 @@ int cpu_step(GB *gb)
 
   // LD (HL),B
   case 0x70:
-    wb(gb, ((uint16_t)gb->h << 8) | gb->l, gb->b);
+    wb(gb, get_hl(gb), gb->b);
     return 8;
 
   // LD (HL),C
   case 0x71:
-    wb(gb, ((uint16_t)gb->h << 8) | gb->l, gb->c);
+    wb(gb, get_hl(gb), gb->c);
     return 8;
 
   // LD (HL),D
   case 0x72:
-    wb(gb, ((uint16_t)gb->h << 8) | gb->l, gb->d);
+    wb(gb, get_hl(gb), gb->d);
     return 8;
 
   // LD (HL),E
   case 0x73:
-    wb(gb, ((uint16_t)gb->h << 8) | gb->l, gb->e);
+    wb(gb, get_hl(gb), gb->e);
     return 8;
 
   // LD (HL),H
   case 0x74:
-    wb(gb, ((uint16_t)gb->h << 8) | gb->l, gb->h);
+    wb(gb, get_hl(gb), gb->h);
     return 8;
 
   // LD (HL),L
   case 0x75:
-    wb(gb, ((uint16_t)gb->h << 8) | gb->l, gb->l);
+    wb(gb, get_hl(gb), gb->l);
     return 8;
 
   // LD (HL),A
   case 0x77:
-    wb(gb, ((uint16_t)gb->h << 8) | gb->l, gb->a);
+    wb(gb, get_hl(gb), gb->a);
     return 8;
 
   // LD (HL),d8
   case 0x36: {
-    wb(gb, ((uint16_t)gb->h << 8) | gb->l, rb(gb, gb->pc++));
+    wb(gb, get_hl(gb), rb(gb, gb->pc++));
     return 12;
   }
 
@@ -514,46 +580,63 @@ int cpu_step(GB *gb)
    * 8-BIT LOADS: indirect via (BC)/(DE)/(HL+)/(HL-)/(a16)/(a8)
    * -------------------------------------------------------------- */
 
+  // LD (BC),A
+  case 0x02:
+    wb(gb, get_bc(gb), gb->a);
+    return 8;
+
+  // LD A,(BC)
+  case 0x0A:
+    gb->a = rb(gb, get_bc(gb));
+    return 8;
+
   // LD (DE),A
   case 0x12:
-    wb(gb, ((uint16_t)gb->d << 8) | gb->e, gb->a);
+    wb(gb, get_de(gb), gb->a);
     return 8;
 
   // LD A,(DE)
   case 0x1A:
-    gb->a = rb(gb, ((uint16_t)gb->d << 8) | gb->e);
+    gb->a = rb(gb, get_de(gb));
     return 8;
 
   // LD (HL+),A
   case 0x22:
   {
-    uint16_t hl = ((uint16_t)gb->h << 8) | gb->l;
+    uint16_t hl = get_hl(gb);
     wb(gb, hl, gb->a);
     hl++;
-    gb->h = hl >> 8;
-    gb->l = hl & 0xFF;
+    set_hl(gb, hl);
     return 8;
   }
 
   // LD A,(HL+)
   case 0x2A:
   {
-    uint16_t hl = ((uint16_t)gb->h << 8) | gb->l;
+    uint16_t hl = get_hl(gb);
     gb->a = rb(gb, hl);
     hl++;
-    gb->h = hl >> 8;
-    gb->l = hl & 0xFF;
+    set_hl(gb, hl);
     return 8;
   }
 
   // LD (HL-),A
   case 0x32:
   {
-    uint16_t hl = ((uint16_t)gb->h << 8) | gb->l;
+    uint16_t hl = get_hl(gb);
     wb(gb, hl, gb->a);
     hl--;
-    gb->h = hl >> 8;
-    gb->l = hl & 0xFF;
+    set_hl(gb, hl);
+    return 8;
+  }
+
+  // LD A,(HL-)
+  case 0x3A:
+  {
+    uint16_t hl = get_hl(gb);
+    gb->a = rb(gb, hl);
+    hl--;
+    set_hl(gb, hl);
     return 8;
   }
 
@@ -580,6 +663,16 @@ int cpu_step(GB *gb)
   // LDH A,(a8)
   case 0xF0:
     gb->a = rb(gb, 0xFF00 + rb(gb, gb->pc++));
+    return 12;
+
+  // LD (C),A
+  case 0xE2:
+    wb(gb, 0xFF00 + gb->c, gb->a);
+    return 12;
+
+  // LD A,(C)
+  case 0xF2:
+    gb->a = rb(gb, 0xFF00 + gb->c);
     return 12;
 
   /* --------------------------------------------------------------
@@ -622,7 +715,7 @@ int cpu_step(GB *gb)
   // LD SP,HL
   case 0xF9:
   {
-    gb->sp = ((uint16_t) gb->h << 8) | gb->l;
+    gb->sp = get_hl(gb);
     return 8;
   }
 
@@ -635,8 +728,7 @@ int cpu_step(GB *gb)
       SET_FLAG(gb, FLAG_C);
     if ((gb->sp & 0xF) + ((uint8_t)n & 0xF) > 0xF)
       SET_FLAG(gb, FLAG_H);
-    gb->h = ((gb->sp + n) >> 8) & 0xFF;
-    gb->l = (gb->sp + n) & 0xFF;
+    set_hl(gb, gb->sp + n);
     return 12;
   }
 
@@ -644,36 +736,15 @@ int cpu_step(GB *gb)
    * 8-BIT ALU: ADD / ADC
    * -------------------------------------------------------------- */
 
-  // ADD A,C
-  case 0x81:
-  {
-    uint16_t result = gb->a + gb->c;
-    gb->f = 0;
-    if (result > 0xFF)
-      SET_FLAG(gb, FLAG_C);
-    if ((gb->a & 0xF) + (gb->c & 0xF) > 0xF)
-      SET_FLAG(gb, FLAG_H);
-    if ((result & 0xFF) == 0)
-      SET_FLAG(gb, FLAG_Z);
-    gb->a = result & 0xFF;
-    return 8;
-  }
-
-  // ADD A,d8
-  case 0xC6:
-  {
-    uint8_t n = rb(gb, gb->pc++);
-    uint16_t result = gb->a + n;
-    gb->f = 0;
-    if (result > 0xFF)
-      SET_FLAG(gb, FLAG_C);
-    if ((gb->a & 0xF) + (n & 0xF) > 0xF)
-      SET_FLAG(gb, FLAG_H);
-    if ((result & 0xFF) == 0)
-      SET_FLAG(gb, FLAG_Z);
-    gb->a = result & 0xFF;
-    return 8;
-  }
+  case 0x80: add(gb, gb->b); return 4; // ADD A,B
+  case 0x81: add(gb, gb->c); return 4; // ADD A,C
+  case 0x82: add(gb, gb->d); return 4; // ADD A,D
+  case 0x83: add(gb, gb->e); return 4; // ADD A,E
+  case 0x84: add(gb, gb->h); return 4; // ADD A,H
+  case 0x85: add(gb, gb->l); return 4; // ADD A,L
+  case 0x86: add(gb, rb(gb, get_hl(gb))); return 8; // ADD A,(HL)
+  case 0x87: add(gb, gb->a); return 4; // ADD A,A
+  case 0xC6: add(gb, rb(gb, gb->pc++)); return 8; // ADD A,d8
 
   case 0x88: adc(gb, gb->b); return 4; // ADC A,B
   case 0x89: adc(gb, gb->c); return 4; // ADC A,C
@@ -681,7 +752,7 @@ int cpu_step(GB *gb)
   case 0x8B: adc(gb, gb->e); return 4; // ADC A,E
   case 0x8C: adc(gb, gb->h); return 4; // ADC A,H
   case 0x8D: adc(gb, gb->l); return 4; // ADC A,L
-  case 0x8E: adc(gb, rb(gb, ((uint16_t)gb->h << 8) | gb->l)); return 8; // ADC A,(HL)
+  case 0x8E: adc(gb, rb(gb, get_hl(gb))); return 8; // ADC A,(HL)
   case 0x8F: adc(gb, gb->a); return 4; // ADC A,A
   case 0xCE: adc(gb, rb(gb, gb->pc++)); return 8; // ADC A,d8
 
@@ -689,38 +760,15 @@ int cpu_step(GB *gb)
    * 8-BIT ALU: SUB / SBC
    * -------------------------------------------------------------- */
 
-  // SUB C
-  case 0x91:
-  {
-    uint16_t result = gb->a - gb->c;
-    gb->f = 0;
-    SET_FLAG(gb, FLAG_N);
-    if (gb->c > gb->a)
-      SET_FLAG(gb, FLAG_C);
-    if ((gb->a & 0xF) < (gb->c & 0xF))
-      SET_FLAG(gb, FLAG_H);
-    if (result == 0)
-      SET_FLAG(gb, FLAG_Z);
-    gb->a = result;
-    return 8;
-  }
-
-  // SUB d8
-  case 0xD6:
-  {
-    uint8_t n = rb(gb, gb->pc++);
-    uint16_t result = gb->a - n;
-    gb->f = 0;
-    SET_FLAG(gb, FLAG_N);
-    if (n > gb->a)
-      SET_FLAG(gb, FLAG_C);
-    if ((gb->a & 0xF) < (n & 0xF))
-      SET_FLAG(gb, FLAG_H);
-    if (result == 0)
-      SET_FLAG(gb, FLAG_Z);
-    gb->a = result;
-    return 8;
-  }
+  case 0x90: sub(gb, gb->b); return 4; // SUB B
+  case 0x91: sub(gb, gb->c); return 4; // SUB C
+  case 0x92: sub(gb, gb->d); return 4; // SUB D
+  case 0x93: sub(gb, gb->e); return 4; // SUB E
+  case 0x94: sub(gb, gb->h); return 4; // SUB H
+  case 0x95: sub(gb, gb->l); return 4; // SUB L
+  case 0x96: sub(gb, rb(gb, get_hl(gb))); return 8; // SUB (HL)
+  case 0x97: sub(gb, gb->a); return 4; // SUB A
+  case 0xD6: sub(gb, rb(gb, gb->pc++)); return 8; // SUB d8
 
   case 0x98: sbc(gb, gb->b); return 4; // SBC A,B
   case 0x99: sbc(gb, gb->c); return 4; // SBC A,C
@@ -728,7 +776,7 @@ int cpu_step(GB *gb)
   case 0x9B: sbc(gb, gb->e); return 4; // SBC A,E
   case 0x9C: sbc(gb, gb->h); return 4; // SBC A,H
   case 0x9D: sbc(gb, gb->l); return 4; // SBC A,L
-  case 0x9E: sbc(gb, rb(gb, ((uint16_t)gb->h << 8) | gb->l)); return 8; // SBC A,(HL)
+  case 0x9E: sbc(gb, rb(gb, get_hl(gb))); return 8; // SBC A,(HL)
   case 0x9F: sbc(gb, gb->a); return 4; // SBC A,A
   case 0xDE: sbc(gb, rb(gb, gb->pc++)); return 8; // SBC A,d8
 
@@ -736,57 +784,27 @@ int cpu_step(GB *gb)
    * 8-BIT ALU: AND / OR / XOR
    * -------------------------------------------------------------- */
 
-  // AND d8
-  case 0xE6:
-  {
-    uint8_t n = rb(gb, gb->pc++);
-    gb->a &= n;
-    gb->f = FLAG_H;
-    if (!gb->a)
-      SET_FLAG(gb, FLAG_Z);
-    return 8;
-  }
 
-  // OR A
-  case 0xB7:
-    gb->f = 0;
-    if (gb->a == 0)
-      SET_FLAG(gb, FLAG_Z);
-    return 4;
 
-  // OR B
-  case 0xB0:
-    gb->a |= gb->b;
-    gb->f = 0;
-    if (gb->a == 0)
-      SET_FLAG(gb, FLAG_Z);
-    return 4;
+  case 0xA0: op_and(gb, gb->b); return 4; // AND B
+  case 0xA1: op_and(gb, gb->c); return 4; // AND C
+  case 0xA2: op_and(gb, gb->d); return 4; // AND D
+  case 0xA3: op_and(gb, gb->e); return 4; // AND E
+  case 0xA4: op_and(gb, gb->h); return 4; // AND H
+  case 0xA5: op_and(gb, gb->l); return 4; // AND L
+  case 0xA6: op_and(gb, rb(gb, get_hl(gb))); return 8; // AND (HL)
+  case 0xA7: op_and(gb, gb->a); return 4; // AND A
+  case 0xE6: op_and(gb, rb(gb, gb->pc++)); return 8; // AND d8
 
-  // OR C
-  case 0xB1:
-    gb->a |= gb->c;
-    gb->f = 0;
-    if (gb->a == 0)
-      SET_FLAG(gb, FLAG_Z);
-    return 4;
-
-  // OR (HL)
-  case 0xB6:
-  {
-    gb->a |= rb(gb, ((uint16_t)gb->h << 8) | gb->l);
-    gb->f = 0;
-    if (gb->a == 0)
-      SET_FLAG(gb, FLAG_Z);
-    return 8;
-  }
-
-  // OR d8
-  case 0xF6:
-    gb->a |= rb(gb, gb->pc++);
-    gb->f = 0;
-    if (gb->a == 0)
-      SET_FLAG(gb, FLAG_Z);
-    return 4;
+  case 0xB0: op_or(gb, gb->b); return 4; // OR B
+  case 0xB1: op_or(gb, gb->c); return 4; // OR C
+  case 0xB2: op_or(gb, gb->d); return 4; // OR D
+  case 0xB3: op_or(gb, gb->e); return 4; // OR E
+  case 0xB4: op_or(gb, gb->h); return 4; // OR H
+  case 0xB5: op_or(gb, gb->l); return 4; // OR L
+  case 0xB6: op_or(gb, rb(gb, get_hl(gb))); return 8; // OR (HL)
+  case 0xB7: op_or(gb, gb->a); return 4; // OR A
+  case 0xF6: op_or(gb, rb(gb, gb->pc++)); return 8; // OR d8
 
   case 0xA8: xor(gb, gb->b); return 4; // XOR B
   case 0xA9: xor(gb, gb->c); return 4; // XOR C
@@ -794,9 +812,23 @@ int cpu_step(GB *gb)
   case 0xAB: xor(gb, gb->e); return 4; // XOR E
   case 0xAC: xor(gb, gb->h); return 4; // XOR H
   case 0xAD: xor(gb, gb->l); return 4; // XOR L
-  case 0xAE: xor(gb, rb(gb, ((uint16_t)gb->h << 8) | gb->l)); return 8; // XOR (HL)
+  case 0xAE: xor(gb, rb(gb, get_hl(gb))); return 8; // XOR (HL)
   case 0xAF: xor(gb, gb->a); return 4; // XOR A
   case 0xEE: xor(gb, rb(gb, gb->pc++)); return 8; // XOR d8
+
+  // CPL
+  case 0x2F:
+    gb->a = ~gb->a;
+    SET_FLAG(gb, FLAG_N);
+    SET_FLAG(gb, FLAG_H);
+    return 4;
+
+  // CCF
+  case 0x3F:
+    CLEAR_FLAG(gb, FLAG_N);
+    CLEAR_FLAG(gb, FLAG_H);
+    gb->f ^= FLAG_C;
+    return 4;
 
   /* --------------------------------------------------------------
    * 8-BIT ALU: CP
@@ -808,23 +840,9 @@ int cpu_step(GB *gb)
   case 0xBB: cp(gb, gb->e); return 4; // CP E
   case 0xBC: cp(gb, gb->h); return 4; // CP H
   case 0xBD: cp(gb, gb->l); return 4; // CP L
-  case 0xBE: cp(gb, rb(gb, ((uint16_t)gb->h << 8) | gb->l)); return 8; // CP (HL)
+  case 0xBE: cp(gb, rb(gb, get_hl(gb))); return 8; // CP (HL)
   case 0xBF: cp(gb, gb->a); return 4; // CP A
-
-  // CP d8
-  case 0xFE:
-  {
-    uint8_t n = rb(gb, gb->pc++);
-    gb->f = 0;
-    if (gb->a == n)
-      SET_FLAG(gb, FLAG_Z);
-    SET_FLAG(gb, FLAG_N);
-    if ((gb->a & 0xF) < (n & 0xF))
-      SET_FLAG(gb, FLAG_H);
-    if (gb->a < n)
-      SET_FLAG(gb, FLAG_C);
-    return 8;
-  }
+  case 0xFE: cp(gb, rb(gb, gb->pc++)); return 8; // CP d8
 
   /* --------------------------------------------------------------
    * 8-BIT ALU: INC / DEC
@@ -838,8 +856,17 @@ int cpu_step(GB *gb)
   case 0x2C: gb->l = inc(gb, gb->l); return 4; // INC L
   case 0x3C: gb->a = inc(gb, gb->a); return 4; // INC A
 
+  // INC (HL)
+  case 0x34:
+  {
+    uint16_t hl = get_hl(gb);
+    wb(gb, hl, inc(gb, rb(gb, hl)));
+    return 12;
+  }
+
   case 0x05: gb->b = dec(gb, gb->b); return 4; // DEC B
   case 0x0D: gb->c = dec(gb, gb->c); return 4; // DEC C
+  case 0x15: gb->d = dec(gb, gb->d); return 4; // DEC D
   case 0x1D: gb->e = dec(gb, gb->e); return 4; // DEC E
   case 0x25: gb->h = dec(gb, gb->h); return 4; // DEC H
   case 0x2D: gb->l = dec(gb, gb->l); return 4; // DEC L
@@ -848,18 +875,8 @@ int cpu_step(GB *gb)
   // DEC (HL)
   case 0x35:
   {
-    uint16_t hl = ((uint16_t)gb->h << 8) | gb->l;
-    uint8_t n = rb(gb, hl);
-    uint8_t half = (n & 0xF) == 0;
-    n--;
-    wb(gb, hl, n);
-    CLEAR_FLAG(gb, FLAG_Z);
-    CLEAR_FLAG(gb, FLAG_H);
-    SET_FLAG(gb, FLAG_N);
-    if (!n)
-      SET_FLAG(gb, FLAG_Z);
-    if (half)
-      SET_FLAG(gb, FLAG_H);
+    uint16_t hl = get_hl(gb);
+    wb(gb, hl, dec(gb, rb(gb, hl)));
     return 12;
   }
 
@@ -870,60 +887,54 @@ int cpu_step(GB *gb)
   // INC BC
   case 0x03:
   {
-    uint16_t bc = ((uint16_t)gb->b << 8) | gb->c;
+    uint16_t bc = get_bc(gb);
     bc++;
-    gb->b = bc >> 8;
-    gb->c = bc & 0xFF;
+    set_bc(gb, bc);
     return 8;
   }
 
   // DEC BC
   case 0x0B:
   {
-    uint16_t bc = ((uint16_t)gb->b << 8) | gb->c;
+    uint16_t bc = get_bc(gb);
     bc--;
-    gb->b = bc >> 8;
-    gb->c = bc & 0xFF;
+    set_bc(gb, bc);
     return 8;
   }
 
   // INC DE
   case 0x13:
   {
-    uint16_t de = ((uint16_t)gb->d << 8) | gb->e;
+    uint16_t de = get_de(gb);
     de++;
-    gb->d = de >> 8;
-    gb->e = de & 0xFF;
+    set_de(gb, de);
     return 8;
   }
 
   // DEC DE
   case 0x1B:
   {
-    uint16_t de = ((uint16_t)gb->d << 8) | gb->e;
+    uint16_t de = get_de(gb);
     de--;
-    gb->d = de >> 8;
-    gb->e = de & 0xFF;
+    set_de(gb, de);
     return 8;
   }
 
   // INC HL
   case 0x23:
   {
-    uint16_t hl = ((uint16_t)gb->h << 8) | gb->l;
+    uint16_t hl = get_hl(gb);
     hl++;
-    gb->h = hl >> 8;
-    gb->l = hl & 0xFF;
+    set_hl(gb, hl);
     return 8;
   }
 
   // DEC HL
   case 0x2B:
   {
-    uint16_t hl = ((uint16_t)gb->h << 8) | gb->l;
+    uint16_t hl = get_hl(gb);
     hl--;
-    gb->h = hl >> 8;
-    gb->l = hl & 0xFF;
+    set_hl(gb, hl);
     return 8;
   }
 
@@ -940,69 +951,65 @@ int cpu_step(GB *gb)
   // ADD HL,BC
   case 0x09:
   {
-    uint16_t hl = ((uint16_t)gb->h << 8) | gb->l;
-    uint16_t bc = ((uint16_t)gb->b << 8) | gb->c;
+    uint16_t hl = get_hl(gb);
+    uint16_t bc = get_bc(gb);
     uint32_t result = hl + bc;
     gb->f &= FLAG_Z;
     if (result > 0xFFFF)
       SET_FLAG(gb, FLAG_C);
     if ((hl & 0xFFF) + (bc & 0xFFF) > 0xFFF)
       SET_FLAG(gb, FLAG_H);
-    gb->h = (result >> 8) & 0xFF;
-    gb->l = result & 0xFF;
+    set_hl(gb, result);
     return 8;
   }
 
   // ADD HL,DE
   case 0x19:
   {
-    uint16_t hl = ((uint16_t)gb->h << 8) | gb->l;
-    uint16_t de = ((uint16_t)gb->d << 8) | gb->e;
+    uint16_t hl = get_hl(gb);
+    uint16_t de = get_de(gb);
     uint32_t result = hl + de;
     gb->f &= FLAG_Z;
     if (result > 0xFFFF)
       SET_FLAG(gb, FLAG_C);
     if ((hl & 0xFFF) + (de & 0xFFF) > 0xFFF)
       SET_FLAG(gb, FLAG_H);
-    gb->h = (result >> 8) & 0xFF;
-    gb->l = result & 0xFF;
+    set_hl(gb, result);
     return 8;
   }
 
   // ADD HL,HL
   case 0x29:
   {
-    uint16_t hl = ((uint16_t)gb->h << 8) | gb->l;
+    uint16_t hl = get_hl(gb);
     uint32_t result = hl + hl;
     gb->f &= FLAG_Z;
     if (result > 0xFFFF)
       SET_FLAG(gb, FLAG_C);
     if ((hl & 0xFFF) + (hl & 0xFFF) > 0xFFF)
       SET_FLAG(gb, FLAG_H);
-    gb->h = (result >> 8) & 0xFF;
-    gb->l = result & 0xFF;
+    set_hl(gb, result);
     return 8;
   }
 
   // ADD HL,SP
   case 0x39:
   {
-    uint16_t hl = ((uint16_t)gb->h << 8) | gb->l;
+    uint16_t hl = get_hl(gb);
     uint32_t result = hl + gb->sp;
     gb->f &= FLAG_Z;
     if (result > 0xFFFF)
       SET_FLAG(gb, FLAG_C);
     if ((hl & 0xFFF) + (gb->sp & 0xFFF) > 0xFFF)
       SET_FLAG(gb, FLAG_H);
-    gb->h = (result >> 8) & 0xFF;
-    gb->l = result & 0xFF;
+    set_hl(gb, result);
     return 8;
   }
 
   // ADD SP,r8
   case 0xE8:
   {
-    int8_t n = (int8_t)rb(gb, gb->pc++);
+    int8_t n = rb(gb, gb->pc++);
     uint32_t result = gb->sp + n;
     gb->f = 0;
     if ((gb->sp & 0xFF) + (uint8_t)n > 0xFF)
@@ -1024,12 +1031,32 @@ int cpu_step(GB *gb)
 
   // JP (HL)
   case 0xE9:
-    gb->pc = ((uint16_t)gb->h << 8 | gb->l);
+    gb->pc = get_hl(gb);
     return 4;
 
   // JP NZ,a16
   case 0xC2:
     if (!GET_FLAG(gb, FLAG_Z))
+    {
+      gb->pc = rw(gb, gb->pc);
+      return 16;
+    }
+    gb->pc += 2;
+    return 12;
+
+  // JP NC,a16
+  case 0xD2:
+    if (!GET_FLAG(gb, FLAG_C))
+    {
+      gb->pc = rw(gb, gb->pc);
+      return 16;
+    }
+    gb->pc += 2;
+    return 12;
+
+  // JP C,a16
+  case 0xDA:
+    if (GET_FLAG(gb, FLAG_C))
     {
       gb->pc = rw(gb, gb->pc);
       return 16;
@@ -1131,6 +1158,48 @@ int cpu_step(GB *gb)
     return 12;
   }
 
+  // CALL Z,a16
+  case 0xCC:
+  {
+    uint16_t addr = rw(gb, gb->pc);
+    gb->pc += 2;
+    if (GET_FLAG(gb, FLAG_Z))
+    {
+      push(gb, gb->pc);
+      gb->pc = addr;
+      return 24;
+    }
+    return 12;
+  }
+
+  // CALL NC,a16
+  case 0xD4:
+  {
+    uint16_t addr = rw(gb, gb->pc);
+    gb->pc += 2;
+    if (!GET_FLAG(gb, FLAG_C))
+    {
+      push(gb, gb->pc);
+      gb->pc = addr;
+      return 24;
+    }
+    return 12;
+  }
+
+  // CALL C,a16
+  case 0xDC:
+  {
+    uint16_t addr = rw(gb, gb->pc);
+    gb->pc += 2;
+    if (GET_FLAG(gb, FLAG_C))
+    {
+      push(gb, gb->pc);
+      gb->pc = addr;
+      return 24;
+    }
+    return 12;
+  }
+
   // RET
   case 0xC9:
     gb->pc = pop(gb);
@@ -1139,6 +1208,16 @@ int cpu_step(GB *gb)
   // RET NC
   case 0xD0:
     if (!GET_FLAG(gb, FLAG_C))
+    {
+      gb->pc = pop(gb);
+      return 20;
+    }
+    return 8;
+
+
+  // RET NZ
+  case 0xC0:
+    if (!GET_FLAG(gb, FLAG_Z))
     {
       gb->pc = pop(gb);
       return 20;
@@ -1169,23 +1248,33 @@ int cpu_step(GB *gb)
     gb->ime = 1;
     return 16;
 
+  case 0xC7: rst(gb, 0x0000); return 16; // RST 00h
+  case 0xD7: rst(gb, 0x0010); return 16; // RST 10h
+  case 0xE7: rst(gb, 0x0020); return 16; // RST 20h
+  case 0xF7: rst(gb, 0x0030); return 16; // RST 30h
+  case 0xCF: rst(gb, 0x0008); return 16; // RST 08h
+  case 0xDF: rst(gb, 0x0018); return 16; // RST 18h
+  case 0xEF: rst(gb, 0x0028); return 16; // RST 28h
+  case 0xFF: rst(gb, 0x0038); return 16; // RST 38h
+
+
   /* --------------------------------------------------------------
    * STACK: PUSH / POP
    * -------------------------------------------------------------- */
 
   // PUSH BC
   case 0xC5:
-    push(gb, ((uint16_t)gb->b << 8) | gb->c);
+    push(gb, get_bc(gb));
     return 16;
 
   // PUSH DE
   case 0xD5:
-    push(gb, ((uint16_t)gb->d << 8) | gb->e);
+    push(gb, get_de(gb));
     return 16;
 
   // PUSH HL
   case 0xE5:
-    push(gb, ((uint16_t)gb->h << 8) | gb->l);
+    push(gb, get_hl(gb));
     return 16;
 
   // PUSH AF
