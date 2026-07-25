@@ -1,5 +1,6 @@
 #pragma once
 #include <stdint.h>
+#include <stddef.h>
 
 typedef struct {
   // Registers
@@ -16,6 +17,10 @@ typedef struct {
   uint8_t mem[0x10000];
 
   int cycles;
+
+  uint8_t *rom;
+  size_t rom_size;
+  uint8_t rom_bank;
 } GB;
 
 #define FLAG_Z 0x80
