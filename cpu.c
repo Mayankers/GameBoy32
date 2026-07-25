@@ -74,6 +74,24 @@ static uint8_t srl(GB *gb, uint8_t reg)
   return reg;
 }
 
+static uint8_t rlc (GB *gb, uint8_t reg) {
+  uint8_t bit7 = (reg >> 7) & 0x1;
+  gb->f = 0;
+  if (bit7) SET_FLAG(gb, FLAG_C);
+  reg = (reg << 1) | bit7;
+  if (reg == 0) SET_FLAG(gb, FLAG_Z);
+  return reg;
+}
+
+static uint8_t rrc (GB *gb, uint8_t reg) {
+  uint8_t bit0 = reg & 0x1;
+  gb->f = 0;
+  if (bit0) SET_FLAG(gb, FLAG_C);
+  reg = (reg >> 1) | (bit0 << 7);
+  if (reg == 0) SET_FLAG(gb, FLAG_Z);
+  return reg;
+}
+
 static uint8_t rl(GB *gb, uint8_t reg)
 {
   uint8_t old_carry = (GET_FLAG(gb, FLAG_C)) ? 1 : 0;
@@ -357,19 +375,15 @@ int cpu_step(GB *gb)
 
   // RLCA
   case 0x07: {
-    uint8_t bit7 = (gb->a >> 7) & 0x1;
-    gb->f = 0;
-    if (bit7) SET_FLAG(gb, FLAG_C);
-    gb->a = (gb->a << 1) | bit7;
+    gb->a = rlc(gb, gb->a);
+    CLEAR_FLAG(gb, FLAG_Z);
     return 4;
   }
 
   // RRCA
   case 0x0F: {
-    uint8_t bit0 = gb->a & 0x1;
-    gb->f = 0;
-    if (bit0) SET_FLAG(gb, FLAG_C);
-    gb->a = (gb->a >> 1) | (bit0 << 7);
+    gb->a = rrc(gb, gb->a);
+    CLEAR_FLAG(gb, FLAG_Z);
     return 4;
   }
 
