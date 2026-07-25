@@ -72,11 +72,11 @@ static void bit(GB *gb, uint8_t bit_num, uint8_t reg) {
   }
 }
 
-static uint8_t res(GB *gb, uint8_t bit_num, uint8_t reg) {
+static uint8_t res(uint8_t bit_num, uint8_t reg) {
   return reg & ~(1 << bit_num);
 }
 
-static uint8_t set(GB *gb, uint8_t bit_num, uint8_t reg) {
+static uint8_t set(uint8_t bit_num, uint8_t reg) {
   return reg | (1 << bit_num);
 }
 
@@ -400,6 +400,302 @@ int prefix_cb(GB *gb, uint8_t op)
     return 16;
   } // SRL (HL)
   case 0x3F: gb->a = srl(gb, gb->a); return 8; // SRL A
+
+  case 0x40: bit(gb, 0, gb->b); return 8; // BIT 0,B
+  case 0x41: bit(gb, 0, gb->c); return 8; // BIT 0,C
+  case 0x42: bit(gb, 0, gb->d); return 8; // BIT 0,D
+  case 0x43: bit(gb, 0, gb->e); return 8; // BIT 0,E
+  case 0x44: bit(gb, 0, gb->h); return 8; // BIT 0,H
+  case 0x45: bit(gb, 0, gb->l); return 8; // BIT 0,L
+  case 0x46: bit(gb, 0, rb(gb, get_hl(gb))); return 12; // BIT 0,(HL)
+  case 0x47: bit(gb, 0, gb->a); return 8; // BIT 0,A
+
+  case 0x48: bit(gb, 1, gb->b); return 8; // BIT 1,B
+  case 0x49: bit(gb, 1, gb->c); return 8; // BIT 1,C
+  case 0x4A: bit(gb, 1, gb->d); return 8; // BIT 1,D
+  case 0x4B: bit(gb, 1, gb->e); return 8; // BIT 1,E
+  case 0x4C: bit(gb, 1, gb->h); return 8; // BIT 1,H
+  case 0x4D: bit(gb, 1, gb->l); return 8; // BIT 1,L
+  case 0x4E: bit(gb, 1, rb(gb, get_hl(gb))); return 12; // BIT 1,(HL)
+  case 0x4F: bit(gb, 1, gb->a); return 8; // BIT 1,A
+
+  case 0x50: bit(gb, 2, gb->b); return 8; // BIT 2,B
+  case 0x51: bit(gb, 2, gb->c); return 8; // BIT 2,C
+  case 0x52: bit(gb, 2, gb->d); return 8; // BIT 2,D
+  case 0x53: bit(gb, 2, gb->e); return 8; // BIT 2,E
+  case 0x54: bit(gb, 2, gb->h); return 8; // BIT 2,H
+  case 0x55: bit(gb, 2, gb->l); return 8; // BIT 2,L
+  case 0x56: bit(gb, 2, rb(gb, get_hl(gb))); return 12; // BIT 2,(HL)
+  case 0x57: bit(gb, 2, gb->a); return 8; // BIT 2,A
+
+  case 0x58: bit(gb, 3, gb->b); return 8; // BIT 3,B
+  case 0x59: bit(gb, 3, gb->c); return 8; // BIT 3,C
+  case 0x5A: bit(gb, 3, gb->d); return 8; // BIT 3,D
+  case 0x5B: bit(gb, 3, gb->e); return 8; // BIT 3,E
+  case 0x5C: bit(gb, 3, gb->h); return 8; // BIT 3,H
+  case 0x5D: bit(gb, 3, gb->l); return 8; // BIT 3,L
+  case 0x5E: bit(gb, 3, rb(gb, get_hl(gb))); return 12; // BIT 3,(HL)
+  case 0x5F: bit(gb, 3, gb->a); return 8; // BIT 3,A
+
+  case 0x60: bit(gb, 4, gb->b); return 8; // BIT 4,B
+  case 0x61: bit(gb, 4, gb->c); return 8; // BIT 4,C
+  case 0x62: bit(gb, 4, gb->d); return 8; // BIT 4,D
+  case 0x63: bit(gb, 4, gb->e); return 8; // BIT 4,E
+  case 0x64: bit(gb, 4, gb->h); return 8; // BIT 4,H
+  case 0x65: bit(gb, 4, gb->l); return 8; // BIT 4,L
+  case 0x66: bit(gb, 4, rb(gb, get_hl(gb))); return 12; // BIT 4,(HL)
+  case 0x67: bit(gb, 4, gb->a); return 8; // BIT 4,A
+
+  case 0x68: bit(gb, 5, gb->b); return 8; // BIT 5,B
+  case 0x69: bit(gb, 5, gb->c); return 8; // BIT 5,C
+  case 0x6A: bit(gb, 5, gb->d); return 8; // BIT 5,D
+  case 0x6B: bit(gb, 5, gb->e); return 8; // BIT 5,E
+  case 0x6C: bit(gb, 5, gb->h); return 8; // BIT 5,H
+  case 0x6D: bit(gb, 5, gb->l); return 8; // BIT 5,L
+  case 0x6E: bit(gb, 5, rb(gb, get_hl(gb))); return 12; // BIT 5,(HL)
+  case 0x6F: bit(gb, 5, gb->a); return 8; // BIT 5,A
+
+  case 0x70: bit(gb, 6, gb->b); return 8; // BIT 6,B
+  case 0x71: bit(gb, 6, gb->c); return 8; // BIT 6,C
+  case 0x72: bit(gb, 6, gb->d); return 8; // BIT 6,D
+  case 0x73: bit(gb, 6, gb->e); return 8; // BIT 6,E
+  case 0x74: bit(gb, 6, gb->h); return 8; // BIT 6,H
+  case 0x75: bit(gb, 6, gb->l); return 8; // BIT 6,L
+  case 0x76: bit(gb, 6, rb(gb, get_hl(gb))); return 12; // BIT 6,(HL)
+  case 0x77: bit(gb, 6, gb->a); return 8; // BIT 6,A
+
+  case 0x78: bit(gb, 7, gb->b); return 8; // BIT 7,B
+  case 0x79: bit(gb, 7, gb->c); return 8; // BIT 7,C
+  case 0x7A: bit(gb, 7, gb->d); return 8; // BIT 7,D
+  case 0x7B: bit(gb, 7, gb->e); return 8; // BIT 7,E
+  case 0x7C: bit(gb, 7, gb->h); return 8; // BIT 7,H
+  case 0x7D: bit(gb, 7, gb->l); return 8; // BIT 7,L
+  case 0x7E: bit(gb, 7, rb(gb, get_hl(gb))); return 12; // BIT 7,(HL)
+  case 0x7F: bit(gb, 7, gb->a); return 8; // BIT 7,A
+
+  case 0x80: gb->b = res(0, gb->b); return 8; // RES 0,B
+  case 0x81: gb->c = res(0, gb->c); return 8; // RES 0,C
+  case 0x82: gb->d = res(0, gb->d); return 8; // RES 0,D
+  case 0x83: gb->e = res(0, gb->e); return 8; // RES 0,E
+  case 0x84: gb->h = res(0, gb->h); return 8; // RES 0,H
+  case 0x85: gb->l = res(0, gb->l); return 8; // RES 0,L
+  case 0x86:
+  {
+    uint16_t hl = get_hl(gb);
+    wb(gb, hl, res(0, rb(gb, hl)));
+    return 16;
+  }  // RES 0,(HL)
+  case 0x87: gb->a = res(0, gb->a); return 8; // RES 0,A
+
+  case 0x88: gb->b = res(1, gb->b); return 8; // RES 1,B
+  case 0x89: gb->c = res(1, gb->c); return 8; // RES 1,C
+  case 0x8A: gb->d = res(1, gb->d); return 8; // RES 1,D
+  case 0x8B: gb->e = res(1, gb->e); return 8; // RES 1,E
+  case 0x8C: gb->h = res(1, gb->h); return 8; // RES 1,H
+  case 0x8D: gb->l = res(1, gb->l); return 8; // RES 1,L
+  case 0x8E:
+  {
+    uint16_t hl = get_hl(gb);
+    wb(gb, hl, res(1, rb(gb, hl)));
+    return 16;
+  }  // RES 1,(HL)
+  case 0x8F: gb->a = res(1, gb->a); return 8; // RES 1,A
+
+  case 0x90: gb->b = res(2, gb->b); return 8; // RES 2,B
+  case 0x91: gb->c = res(2, gb->c); return 8; // RES 2,C
+  case 0x92: gb->d = res(2, gb->d); return 8; // RES 2,D
+  case 0x93: gb->e = res(2, gb->e); return 8; // RES 2,E
+  case 0x94: gb->h = res(2, gb->h); return 8; // RES 2,H
+  case 0x95: gb->l = res(2, gb->l); return 8; // RES 2,L
+  case 0x96:
+  {
+    uint16_t hl = get_hl(gb);
+    wb(gb, hl, res(2, rb(gb, hl)));
+    return 16;
+  }  // RES 2,(HL)
+  case 0x97: gb->a = res(2, gb->a); return 8; // RES 2,A
+
+  case 0x98: gb->b = res(3, gb->b); return 8; // RES 3,B
+  case 0x99: gb->c = res(3, gb->c); return 8; // RES 3,C
+  case 0x9A: gb->d = res(3, gb->d); return 8; // RES 3,D
+  case 0x9B: gb->e = res(3, gb->e); return 8; // RES 3,E
+  case 0x9C: gb->h = res(3, gb->h); return 8; // RES 3,H
+  case 0x9D: gb->l = res(3, gb->l); return 8; // RES 3,L
+  case 0x9E:
+  {
+    uint16_t hl = get_hl(gb);
+    wb(gb, hl, res(3, rb(gb, hl)));
+    return 16;
+  }  // RES 3,(HL)
+  case 0x9F: gb->a = res(3, gb->a); return 8; // RES 3,A
+
+  case 0xA0: gb->b = res(4, gb->b); return 8; // RES 4,B
+  case 0xA1: gb->c = res(4, gb->c); return 8; // RES 4,C
+  case 0xA2: gb->d = res(4, gb->d); return 8; // RES 4,D
+  case 0xA3: gb->e = res(4, gb->e); return 8; // RES 4,E
+  case 0xA4: gb->h = res(4, gb->h); return 8; // RES 4,H
+  case 0xA5: gb->l = res(4, gb->l); return 8; // RES 4,L
+  case 0xA6:
+  {
+    uint16_t hl = get_hl(gb);
+    wb(gb, hl, res(4, rb(gb, hl)));
+    return 16;
+  }  // RES 4,(HL)
+  case 0xA7: gb->a = res(4, gb->a); return 8; // RES 4,A
+
+  case 0xA8: gb->b = res(5, gb->b); return 8; // RES 5,B
+  case 0xA9: gb->c = res(5, gb->c); return 8; // RES 5,C
+  case 0xAA: gb->d = res(5, gb->d); return 8; // RES 5,D
+  case 0xAB: gb->e = res(5, gb->e); return 8; // RES 5,E
+  case 0xAC: gb->h = res(5, gb->h); return 8; // RES 5,H
+  case 0xAD: gb->l = res(5, gb->l); return 8; // RES 5,L
+  case 0xAE:
+  {
+    uint16_t hl = get_hl(gb);
+    wb(gb, hl, res(5, rb(gb, hl)));
+    return 16;
+  }  // RES 5,(HL)
+  case 0xAF: gb->a = res(5, gb->a); return 8; // RES 5,A
+
+  case 0xB0: gb->b = res(6, gb->b); return 8; // RES 6,B
+  case 0xB1: gb->c = res(6, gb->c); return 8; // RES 6,C
+  case 0xB2: gb->d = res(6, gb->d); return 8; // RES 6,D
+  case 0xB3: gb->e = res(6, gb->e); return 8; // RES 6,E
+  case 0xB4: gb->h = res(6, gb->h); return 8; // RES 6,H
+  case 0xB5: gb->l = res(6, gb->l); return 8; // RES 6,L
+  case 0xB6:
+  {
+    uint16_t hl = get_hl(gb);
+    wb(gb, hl, res(6, rb(gb, hl)));
+    return 16;
+  }  // RES 6,(HL)
+  case 0xB7: gb->a = res(6, gb->a); return 8; // RES 6,A
+
+  case 0xB8: gb->b = res(7, gb->b); return 8; // RES 7,B
+  case 0xB9: gb->c = res(7, gb->c); return 8; // RES 7,C
+  case 0xBA: gb->d = res(7, gb->d); return 8; // RES 7,D
+  case 0xBB: gb->e = res(7, gb->e); return 8; // RES 7,E
+  case 0xBC: gb->h = res(7, gb->h); return 8; // RES 7,H
+  case 0xBD: gb->l = res(7, gb->l); return 8; // RES 7,L
+  case 0xBE:
+  {
+    uint16_t hl = get_hl(gb);
+    wb(gb, hl, res(7, rb(gb, hl)));
+    return 16;
+  }  // RES 7,(HL)
+  case 0xBF: gb->a = res(7, gb->a); return 8; // RES 7,A
+
+  case 0xC0: gb->b = set(0, gb->b); return 8; // SET 0,B
+  case 0xC1: gb->c = set(0, gb->c); return 8; // SET 0,C
+  case 0xC2: gb->d = set(0, gb->d); return 8; // SET 0,D
+  case 0xC3: gb->e = set(0, gb->e); return 8; // SET 0,E
+  case 0xC4: gb->h = set(0, gb->h); return 8; // SET 0,H
+  case 0xC5: gb->l = set(0, gb->l); return 8; // SET 0,L
+  case 0xC6:
+  {
+    uint16_t hl = get_hl(gb);
+    wb(gb, hl, set(0, rb(gb, hl)));
+    return 16;
+  }  // SET 0,(HL)
+  case 0xC7: gb->a = set(0, gb->a); return 8; // SET 0,A
+
+  case 0xC8: gb->b = set(1, gb->b); return 8; // SET 1,B
+  case 0xC9: gb->c = set(1, gb->c); return 8; // SET 1,C
+  case 0xCA: gb->d = set(1, gb->d); return 8; // SET 1,D
+  case 0xCB: gb->e = set(1, gb->e); return 8; // SET 1,E
+  case 0xCC: gb->h = set(1, gb->h); return 8; // SET 1,H
+  case 0xCD: gb->l = set(1, gb->l); return 8; // SET 1,L
+  case 0xCE:
+  {
+    uint16_t hl = get_hl(gb);
+    wb(gb, hl, set(1, rb(gb, hl)));
+    return 16;
+  }  // SET 1,(HL)
+  case 0xCF: gb->a = set(1, gb->a); return 8; // SET 1,A
+
+  case 0xD0: gb->b = set(2, gb->b); return 8; // SET 2,B
+  case 0xD1: gb->c = set(2, gb->c); return 8; // SET 2,C
+  case 0xD2: gb->d = set(2, gb->d); return 8; // SET 2,D
+  case 0xD3: gb->e = set(2, gb->e); return 8; // SET 2,E
+  case 0xD4: gb->h = set(2, gb->h); return 8; // SET 2,H
+  case 0xD5: gb->l = set(2, gb->l); return 8; // SET 2,L
+  case 0xD6:
+  {
+    uint16_t hl = get_hl(gb);
+    wb(gb, hl, set(2, rb(gb, hl)));
+    return 16;
+  }  // SET 2,(HL)
+  case 0xD7: gb->a = set(2, gb->a); return 8; // SET 2,A
+
+  case 0xD8: gb->b = set(3, gb->b); return 8; // SET 3,B
+  case 0xD9: gb->c = set(3, gb->c); return 8; // SET 3,C
+  case 0xDA: gb->d = set(3, gb->d); return 8; // SET 3,D
+  case 0xDB: gb->e = set(3, gb->e); return 8; // SET 3,E
+  case 0xDC: gb->h = set(3, gb->h); return 8; // SET 3,H
+  case 0xDD: gb->l = set(3, gb->l); return 8; // SET 3,L
+  case 0xDE:
+  {
+    uint16_t hl = get_hl(gb);
+    wb(gb, hl, set(3, rb(gb, hl)));
+    return 16;
+  }  // SET 3,(HL)
+  case 0xDF: gb->a = set(3, gb->a); return 8; // SET 3,A
+
+  case 0xE0: gb->b = set(4, gb->b); return 8; // SET 4,B
+  case 0xE1: gb->c = set(4, gb->c); return 8; // SET 4,C
+  case 0xE2: gb->d = set(4, gb->d); return 8; // SET 4,D
+  case 0xE3: gb->e = set(4, gb->e); return 8; // SET 4,E
+  case 0xE4: gb->h = set(4, gb->h); return 8; // SET 4,H
+  case 0xE5: gb->l = set(4, gb->l); return 8; // SET 4,L
+  case 0xE6:
+  {
+    uint16_t hl = get_hl(gb);
+    wb(gb, hl, set(4, rb(gb, hl)));
+    return 16;
+  }  // SET 4,(HL)
+  case 0xE7: gb->a = set(4, gb->a); return 8; // SET 4,A
+
+  case 0xE8: gb->b = set(5, gb->b); return 8; // SET 5,B
+  case 0xE9: gb->c = set(5, gb->c); return 8; // SET 5,C
+  case 0xEA: gb->d = set(5, gb->d); return 8; // SET 5,D
+  case 0xEB: gb->e = set(5, gb->e); return 8; // SET 5,E
+  case 0xEC: gb->h = set(5, gb->h); return 8; // SET 5,H
+  case 0xED: gb->l = set(5, gb->l); return 8; // SET 5,L
+  case 0xEE:
+  {
+    uint16_t hl = get_hl(gb);
+    wb(gb, hl, set(5, rb(gb, hl)));
+    return 16;
+  }  // SET 5,(HL)
+  case 0xEF: gb->a = set(5, gb->a); return 8; // SET 5,A
+
+  case 0xF0: gb->b = set(6, gb->b); return 8; // SET 6,B
+  case 0xF1: gb->c = set(6, gb->c); return 8; // SET 6,C
+  case 0xF2: gb->d = set(6, gb->d); return 8; // SET 6,D
+  case 0xF3: gb->e = set(6, gb->e); return 8; // SET 6,E
+  case 0xF4: gb->h = set(6, gb->h); return 8; // SET 6,H
+  case 0xF5: gb->l = set(6, gb->l); return 8; // SET 6,L
+  case 0xF6:
+  {
+    uint16_t hl = get_hl(gb);
+    wb(gb, hl, set(6, rb(gb, hl)));
+    return 16;
+  }  // SET 6,(HL)
+  case 0xF7: gb->a = set(6, gb->a); return 8; // SET 6,A
+
+  case 0xF8: gb->b = set(7, gb->b); return 8; // SET 7,B
+  case 0xF9: gb->c = set(7, gb->c); return 8; // SET 7,C
+  case 0xFA: gb->d = set(7, gb->d); return 8; // SET 7,D
+  case 0xFB: gb->e = set(7, gb->e); return 8; // SET 7,E
+  case 0xFC: gb->h = set(7, gb->h); return 8; // SET 7,H
+  case 0xFD: gb->l = set(7, gb->l); return 8; // SET 7,L
+  case 0xFE:
+  {
+    uint16_t hl = get_hl(gb);
+    wb(gb, hl, set(7, rb(gb, hl)));
+    return 16;
+  }  // SET 7,(HL)
+  case 0xFF: gb->a = set(7, gb->a); return 8; // SET 7,A
 
   default:
     printf("Unknown CB opcode 0x%02X\n", op);
