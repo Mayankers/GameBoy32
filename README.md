@@ -1,8 +1,14 @@
 # GameBoy 32
 
+A simple GameBoy (and hopefully Gameboy Color) emulator that runs on an ESP32
 
+### Hardware Setup:
 
-### Links:
+ILI9431 display, buttons, optional speaker.
+
+### Uploading code to ESP32:
+
+### Useful Reference Links:
 
 [**gbops op code table**](https://izik1.github.io/gbops/)
 [**pastraiser op code table**](https://www.pastraiser.com/cpu/gameboy/gameboy_opcodes.html)
