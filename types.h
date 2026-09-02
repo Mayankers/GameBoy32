@@ -16,7 +16,7 @@ typedef struct {
 
   uint8_t mem[0x10000];
 
-  int cycles;
+  uint16_t div_counter;
 
   uint8_t *rom;
   size_t rom_size;

@@ -24,6 +24,13 @@ static void wb(GB *gb, uint16_t addr, uint8_t v) {
     return;
   }
   if (addr < 0x8000) return;
+
+  if (addr ==  0xFF04) {
+    gb->div_counter = 0;
+    gb->mem[0xFF04] = 0;
+    return;
+  }
+
   gb->mem[addr] = v;
 }
 
@@ -44,6 +51,35 @@ static uint16_t pop(GB *gb)
   return (hi << 8) | lo;
 }
 
+/* ================================================================
+ * TIMER BEHAVIOR
+ * ================================================================ */
+
+static const int timer_tac_bit[4] = {9, 3, 5, 7};
+
+static void timer_tick (GB *gb, int cycles) {
+  uint8_t tac = gb->mem[0xFF07];
+  int enabled = tac & 0x04;
+  int bit = timer_tac_bit[tac & 0x03];
+
+  for (int i = 0; i < cycles; i++) {
+    uint16_t old_div = gb->div_counter++;
+    gb->mem[0xFF04] = gb->div_counter >> 8;
+
+    if (enabled) {
+      int old_bit = (old_div >> bit) & 1;
+      int new_bit = (gb->div_counter >> bit) & 1;
+
+      if (old_bit && !new_bit) {
+        gb->mem[0xFF05]++;
+        if (gb->mem[0xFF05] == 0) {
+          gb->mem[0xFF05] = gb->mem[0xFF06];
+          gb->mem[0xFF0F] |= 0x04;
+        }
+      }
+    }
+  }
+}
 
 /* ================================================================
  * CONCATENATED REGISTER HELPERS
@@ -707,7 +743,7 @@ int prefix_cb(GB *gb, uint8_t op)
  * MAIN OPCODE TABLE
  * ================================================================ */
 
-int cpu_step(GB *gb)
+static int cpu_step_impl(GB *gb)
 {
   uint8_t pending = gb->mem[0xFF0F] & gb->mem[0xFFFF] & 0x1F;
   if (gb->halt) {
@@ -1755,4 +1791,10 @@ int cpu_step(GB *gb)
     printf("Unknown opcode: 0x%02X at 0x%04X\n", op, gb->pc - 1);
     return -1;
   }
+}
+
+int cpu_step(GB *gb) {
+  int cycles = cpu_step_impl(gb);
+  if (cycles > 0) timer_tick(gb, cycles);
+  return cycles;
 }
