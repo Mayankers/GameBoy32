@@ -4,58 +4,18 @@
 #include "cpu.h"
 
 /* ================================================================
- * MEMORY ACCESS / STACK HELPERS
- * ================================================================ */
-
-static uint8_t rb(GB *gb, uint16_t addr) {
-  if (addr < 0x4000) return gb->rom[addr];
-  if (addr < 0x8000) {
-    uint32_t offset = (uint32_t)gb->rom_bank * 0x4000 + (addr - 0x4000);
-    return gb->rom[offset % gb->rom_size];
-  }
-  return gb->mem[addr];
-}
-
-static void wb(GB *gb, uint16_t addr, uint8_t v) {
-  if (addr >= 0x2000 && addr <= 0x3FFF) {
-    uint8_t bank = v & 0x1F;
-    if (bank == 0) bank = 1;
-    gb->rom_bank = bank;
-    return;
-  }
-  if (addr < 0x8000) return;
-
-  if (addr ==  0xFF04) {
-    gb->div_counter = 0;
-    gb->mem[0xFF04] = 0;
-    return;
-  }
-
-  gb->mem[addr] = v;
-}
-
-static uint16_t rw(GB *gb, uint16_t addr) { return rb(gb, addr) | (rb(gb, addr + 1) << 8); }
-
-static void push(GB *gb, uint16_t val)
-{
-  gb->sp--;
-  wb(gb, gb->sp, val >> 8);
-  gb->sp--;
-  wb(gb, gb->sp, val & 0xFF);
-}
-
-static uint16_t pop(GB *gb)
-{
-  uint16_t lo = rb(gb, gb->sp++);
-  uint16_t hi = rb(gb, gb->sp++);
-  return (hi << 8) | lo;
-}
-
-/* ================================================================
  * TIMER BEHAVIOR
  * ================================================================ */
 
 static const int timer_tac_bit[4] = {9, 3, 5, 7};
+
+static void timer_increment (GB *gb) {
+  gb->mem[0xFF05]++;
+  if (gb->mem[0xFF05] == 0) {
+    gb->mem[0xFF05] = gb->mem[0xFF06];
+    gb->mem[0xFF0F] |= 0x04;
+  }
+}
 
 static void timer_tick (GB *gb, int cycles) {
   uint8_t tac = gb->mem[0xFF07];
@@ -71,14 +31,77 @@ static void timer_tick (GB *gb, int cycles) {
       int new_bit = (gb->div_counter >> bit) & 1;
 
       if (old_bit && !new_bit) {
-        gb->mem[0xFF05]++;
-        if (gb->mem[0xFF05] == 0) {
-          gb->mem[0xFF05] = gb->mem[0xFF06];
-          gb->mem[0xFF0F] |= 0x04;
-        }
+        timer_increment(gb);
       }
     }
   }
+}
+
+static void tick(GB *gb) {
+  timer_tick(gb, 4);
+}
+
+/* ================================================================
+ * MEMORY ACCESS / STACK HELPERS
+ * ================================================================ */
+
+static uint8_t rb(GB *gb, uint16_t addr) {
+  uint8_t val;
+  if (addr < 0x4000) {
+    val = gb->rom[addr];
+  }
+  else if (addr < 0x8000) {
+    uint32_t offset = (uint32_t)gb->rom_bank * 0x4000 + (addr - 0x4000);
+    val = gb->rom[offset % gb->rom_size];
+  }
+  else {
+    val = gb->mem[addr];
+  }
+  tick(gb);
+  return val;
+}
+
+static void wb(GB *gb, uint16_t addr, uint8_t v) {
+  if (addr >= 0x2000 && addr <= 0x3FFF) {
+    uint8_t bank = v & 0x1F;
+    if (bank == 0) bank = 1;
+    gb->rom_bank = bank;
+  }
+  else if (addr < 0x8000) {
+    ;
+  }
+  else if (addr ==  0xFF04) {
+    uint8_t tac = gb->mem[0xFF07];
+    int enabled = tac & 0x04;
+    int bit = timer_tac_bit[tac & 0x03];
+    if (enabled && (gb->div_counter >> bit) & 1) {
+      timer_increment(gb);
+    }
+    gb->div_counter = 0;
+    gb->mem[0xFF04] = 0;
+  }
+  else {
+    gb->mem[addr] = v;
+  }
+  tick(gb);
+}
+
+static uint16_t rw(GB *gb, uint16_t addr) { return rb(gb, addr) | (rb(gb, addr + 1) << 8); }
+
+static void push(GB *gb, uint16_t val)
+{
+  tick(gb); // internal delay cycle before the stack writes
+  gb->sp--;
+  wb(gb, gb->sp, val >> 8);
+  gb->sp--;
+  wb(gb, gb->sp, val & 0xFF);
+}
+
+static uint16_t pop(GB *gb)
+{
+  uint16_t lo = rb(gb, gb->sp++);
+  uint16_t hi = rb(gb, gb->sp++);
+  return (hi << 8) | lo;
 }
 
 /* ================================================================
@@ -743,7 +766,7 @@ int prefix_cb(GB *gb, uint8_t op)
  * MAIN OPCODE TABLE
  * ================================================================ */
 
-static int cpu_step_impl(GB *gb)
+int cpu_step(GB *gb)
 {
   uint8_t pending = gb->mem[0xFF0F] & gb->mem[0xFFFF] & 0x1F;
   if (gb->halt) {
@@ -752,6 +775,7 @@ static int cpu_step_impl(GB *gb)
         if (!gb->ime)
             gb->halt_bug = 1;
     } else {
+        tick(gb);
         return 4;
     }
   }
@@ -761,8 +785,10 @@ static int cpu_step_impl(GB *gb)
       for (int i = 0; i < 5; i++) {
         if (pending & (1 << i)) {
 	  gb->mem[0xFF0F] &= ~(1 << i);
+	  tick(gb); // internal wait cycle before the dispatch push
 	  push(gb, gb->pc);
 	  gb->pc = 0x40 + (i * 8);
+	  tick(gb); // internal cycle to set PC to the vector
 	  return 20;
 	}
       }
@@ -1149,12 +1175,12 @@ static int cpu_step_impl(GB *gb)
   // LD (C),A
   case 0xE2:
     wb(gb, 0xFF00 + gb->c, gb->a);
-    return 12;
+    return 8;
 
   // LD A,(C)
   case 0xF2:
     gb->a = rb(gb, 0xFF00 + gb->c);
-    return 12;
+    return 8;
 
   /* --------------------------------------------------------------
    * 16-BIT LOADS
@@ -1197,6 +1223,7 @@ static int cpu_step_impl(GB *gb)
   case 0xF9:
   {
     gb->sp = get_hl(gb);
+    tick(gb);
     return 8;
   }
 
@@ -1210,6 +1237,7 @@ static int cpu_step_impl(GB *gb)
     if ((gb->sp & 0xF) + ((uint8_t)n & 0xF) > 0xF)
       SET_FLAG(gb, FLAG_H);
     set_hl(gb, gb->sp + n);
+    tick(gb);
     return 12;
   }
 
@@ -1371,6 +1399,7 @@ static int cpu_step_impl(GB *gb)
     uint16_t bc = get_bc(gb);
     bc++;
     set_bc(gb, bc);
+    tick(gb);
     return 8;
   }
 
@@ -1380,6 +1409,7 @@ static int cpu_step_impl(GB *gb)
     uint16_t bc = get_bc(gb);
     bc--;
     set_bc(gb, bc);
+    tick(gb);
     return 8;
   }
 
@@ -1389,6 +1419,7 @@ static int cpu_step_impl(GB *gb)
     uint16_t de = get_de(gb);
     de++;
     set_de(gb, de);
+    tick(gb);
     return 8;
   }
 
@@ -1398,6 +1429,7 @@ static int cpu_step_impl(GB *gb)
     uint16_t de = get_de(gb);
     de--;
     set_de(gb, de);
+    tick(gb);
     return 8;
   }
 
@@ -1407,6 +1439,7 @@ static int cpu_step_impl(GB *gb)
     uint16_t hl = get_hl(gb);
     hl++;
     set_hl(gb, hl);
+    tick(gb);
     return 8;
   }
 
@@ -1416,17 +1449,20 @@ static int cpu_step_impl(GB *gb)
     uint16_t hl = get_hl(gb);
     hl--;
     set_hl(gb, hl);
+    tick(gb);
     return 8;
   }
 
   // INC SP
   case 0x33:
     gb->sp++;
+    tick(gb);
     return 8;
 
   // DEC SP
   case 0x3B:
     gb->sp--;
+    tick(gb);
     return 8;
 
   // ADD HL,BC
@@ -1441,6 +1477,7 @@ static int cpu_step_impl(GB *gb)
     if ((hl & 0xFFF) + (bc & 0xFFF) > 0xFFF)
       SET_FLAG(gb, FLAG_H);
     set_hl(gb, result);
+    tick(gb);
     return 8;
   }
 
@@ -1456,6 +1493,7 @@ static int cpu_step_impl(GB *gb)
     if ((hl & 0xFFF) + (de & 0xFFF) > 0xFFF)
       SET_FLAG(gb, FLAG_H);
     set_hl(gb, result);
+    tick(gb);
     return 8;
   }
 
@@ -1470,6 +1508,7 @@ static int cpu_step_impl(GB *gb)
     if ((hl & 0xFFF) + (hl & 0xFFF) > 0xFFF)
       SET_FLAG(gb, FLAG_H);
     set_hl(gb, result);
+    tick(gb);
     return 8;
   }
 
@@ -1484,6 +1523,7 @@ static int cpu_step_impl(GB *gb)
     if ((hl & 0xFFF) + (gb->sp & 0xFFF) > 0xFFF)
       SET_FLAG(gb, FLAG_H);
     set_hl(gb, result);
+    tick(gb);
     return 8;
   }
 
@@ -1498,6 +1538,8 @@ static int cpu_step_impl(GB *gb)
     if ((gb->sp & 0xF) + ((uint8_t)n & 0xF) > 0xF)
       SET_FLAG(gb, FLAG_H);
     gb->sp = result;
+    tick(gb);
+    tick(gb);
     return 16;
   }
 
@@ -1508,6 +1550,7 @@ static int cpu_step_impl(GB *gb)
   // JP a16
   case 0xC3:
     gb->pc = rw(gb, gb->pc);
+    tick(gb);
     return 16;
 
   // JP (HL)
@@ -1517,49 +1560,66 @@ static int cpu_step_impl(GB *gb)
 
   // JP NZ,a16
   case 0xC2:
+  {
+    uint16_t addr = rw(gb, gb->pc); // address bytes are always read, taken or not
+    gb->pc += 2;
     if (!GET_FLAG(gb, FLAG_Z))
     {
-      gb->pc = rw(gb, gb->pc);
+      gb->pc = addr;
+      tick(gb);
       return 16;
     }
-    gb->pc += 2;
     return 12;
+  }
 
   // JP NC,a16
   case 0xD2:
+  {
+    uint16_t addr = rw(gb, gb->pc);
+    gb->pc += 2;
     if (!GET_FLAG(gb, FLAG_C))
     {
-      gb->pc = rw(gb, gb->pc);
+      gb->pc = addr;
+      tick(gb);
       return 16;
     }
-    gb->pc += 2;
     return 12;
+  }
 
   // JP C,a16
   case 0xDA:
+  {
+    uint16_t addr = rw(gb, gb->pc);
+    gb->pc += 2;
     if (GET_FLAG(gb, FLAG_C))
     {
-      gb->pc = rw(gb, gb->pc);
+      gb->pc = addr;
+      tick(gb);
       return 16;
     }
-    gb->pc += 2;
     return 12;
+  }
 
   // JP Z,a16
   case 0xCA:
+  {
+    uint16_t addr = rw(gb, gb->pc);
+    gb->pc += 2;
     if (GET_FLAG(gb, FLAG_Z))
     {
-      gb->pc = rw(gb, gb->pc);
+      gb->pc = addr;
+      tick(gb);
       return 16;
     }
-    gb->pc += 2;
     return 12;
+  }
 
   // JR r8
   case 0x18:
   {
     int8_t offset = (int8_t)rb(gb, gb->pc++);
     gb->pc += offset;
+    tick(gb);
     return 12;
   }
 
@@ -1570,6 +1630,7 @@ static int cpu_step_impl(GB *gb)
     if (!GET_FLAG(gb, FLAG_Z))
     {
       gb->pc += offset;
+      tick(gb);
       return 12;
     }
     return 8;
@@ -1582,6 +1643,7 @@ static int cpu_step_impl(GB *gb)
     if (GET_FLAG(gb, FLAG_Z))
     {
       gb->pc += offset;
+      tick(gb);
       return 12;
     }
     return 8;
@@ -1594,6 +1656,7 @@ static int cpu_step_impl(GB *gb)
     if (!GET_FLAG(gb, FLAG_C))
     {
       gb->pc += offset;
+      tick(gb);
       return 12;
     }
     return 8;
@@ -1606,6 +1669,7 @@ static int cpu_step_impl(GB *gb)
     if (GET_FLAG(gb, FLAG_C))
     {
       gb->pc += offset;
+      tick(gb);
       return 12;
     }
     return 8;
@@ -1684,13 +1748,16 @@ static int cpu_step_impl(GB *gb)
   // RET
   case 0xC9:
     gb->pc = pop(gb);
+    tick(gb);
     return 16;
 
   // RET NC
   case 0xD0:
+    tick(gb); // condition-check cycle, happens whether taken or not
     if (!GET_FLAG(gb, FLAG_C))
     {
       gb->pc = pop(gb);
+      tick(gb);
       return 20;
     }
     return 8;
@@ -1698,27 +1765,33 @@ static int cpu_step_impl(GB *gb)
 
   // RET NZ
   case 0xC0:
+    tick(gb);
     if (!GET_FLAG(gb, FLAG_Z))
     {
       gb->pc = pop(gb);
+      tick(gb);
       return 20;
     }
     return 8;
 
   // RET Z
   case 0xC8:
+    tick(gb);
     if (GET_FLAG(gb, FLAG_Z))
     {
       gb->pc = pop(gb);
+      tick(gb);
       return 20;
     }
     return 8;
 
   // RET C
   case 0xD8:
+    tick(gb);
     if (GET_FLAG(gb, FLAG_C))
     {
       gb->pc = pop(gb);
+      tick(gb);
       return 20;
     }
     return 8;
@@ -1727,6 +1800,7 @@ static int cpu_step_impl(GB *gb)
   case 0xD9:
     gb->pc = pop(gb);
     gb->ime = 1;
+    tick(gb);
     return 16;
 
   case 0xC7: rst(gb, 0x0000); return 16; // RST 00h
@@ -1791,10 +1865,4 @@ static int cpu_step_impl(GB *gb)
     printf("Unknown opcode: 0x%02X at 0x%04X\n", op, gb->pc - 1);
     return -1;
   }
-}
-
-int cpu_step(GB *gb) {
-  int cycles = cpu_step_impl(gb);
-  if (cycles > 0) timer_tick(gb, cycles);
-  return cycles;
 }
