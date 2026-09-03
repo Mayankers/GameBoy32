@@ -772,8 +772,8 @@ int cpu_step(GB *gb)
   if (gb->halt) {
     if (pending) {
         gb->halt = 0;
-        if (!gb->ime)
-            gb->halt_bug = 1;
+        // if (!gb->ime)
+        //     gb->halt_bug = 1;
     } else {
         tick(gb);
         return 4;
@@ -823,8 +823,19 @@ int cpu_step(GB *gb)
 
   // HALT
   case 0x76:
-    gb->halt = 1;
+  {
+    uint8_t interrupt_pending = gb->mem[0xFF0F] & gb->mem[0xFFFF] & 0x1F;
+    if (!gb->ime && interrupt_pending) {
+      gb->halt_bug = 1;
+    } 
+    else if (gb->ime && interrupt_pending) {
+      gb->pc--;
+    }
+    else {
+      gb->halt = 1;
+    }
     return 4;
+  }
 
   // DI
   case 0xF3:
